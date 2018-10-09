@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
-
 import argparse
 import codecs
 import encodings
@@ -153,8 +150,11 @@ def _fstring_parse_outer(s, i, level, parts, exprs):
 
 
 def _is_f(tokens, i):
-    return i >= 0 and tokens[i].name == 'NAME' and tokens[i].src.lower() == 'f'
+    return i >= 0 and tokens[i].name == 'STRING' and tokens[i].src[0] == 'f'
 
+
+def fstr(tok):
+    return ( (tok.name == 'STRING' and tok.src[0]=='f') and 1 ) or 0
 
 def _make_fstring(tokens):
     import tokenize_rt
@@ -163,22 +163,16 @@ def _make_fstring(tokens):
     exprs = []
 
     for i, token in enumerate(tokens):
-        if _is_f(tokens, i):
-            continue
-
-        if token.name == 'STRING' and _is_f(tokens, i - 1):
-            parts = []
-            try:
-                _fstring_parse_outer(token.src, 0, 0, parts, exprs)
-            except SyntaxError as e:
-                raise TokenSyntaxError(e, tokens[i - 1])
-            token = token._replace(src=''.join(parts))
-        elif token.name == 'STRING' and not _is_f(tokens, i - 1):
-            new_src = token.src.replace('{', '{{').replace('}', '}}')
-            token = token._replace(src=new_src)
+        parts = []
+        try:
+            _fstring_parse_outer(token.src[1:], 0, 0, parts, exprs)
+        except SyntaxError as e:
+            raise TokenSyntaxError(e, tokens[i - 1])
+        token = token._replace(src=''.join(parts))
         new_tokens.append(token)
 
-    exprs = ('({})'.format(expr) for expr in exprs)
+    #exprs = ('({})'.format(expr) for expr in exprs)
+    exprs = ('{}'.format(expr) for expr in exprs)
     format_src = '.format({})'.format(', '.join(exprs))
     new_tokens.append(tokenize_rt.Token('FORMAT', src=format_src))
 
@@ -196,21 +190,10 @@ def decode(b, errors='strict'):
     tokens = tokenize_rt.src_to_tokens(u)
 
     to_replace = []
-    start = end = seen_f = None
 
     for i, token in enumerate(tokens):
-        if start is None:
-            if token.name == 'STRING':
-                start, end = i, i + 1
-                seen_f = _is_f(tokens, i - 1)
-                start -= seen_f
-        elif token.name == 'STRING':
-            end = i + 1
-            seen_f |= _is_f(tokens, i - 1)
-        elif not _is_f(tokens, i) and token.name not in non_coding_tokens:
-            if seen_f:
-                to_replace.append((start, end))
-            start = end = seen_f = None
+        if fstr(token):
+            to_replace.append((i, i+1))
 
     for start, end in reversed(to_replace):
         try:
@@ -250,19 +233,6 @@ class StreamReader(utf_8.streamreader, object):
         self._stream = stream
         self._decoded = False
 
-
-def _natively_supports_fstrings():
-    try:
-        return eval('f"hi"') == 'hi'
-    except SyntaxError:
-        return False
-
-
-SUPPORTS_FSTRINGS = _natively_supports_fstrings()
-if SUPPORTS_FSTRINGS:  # pragma: no cover
-    decode = utf_8.decode  # noqa
-    IncrementalDecoder = utf_8.incrementaldecoder  # noqa
-    StreamReader = utf_8.streamreader  # noqa
 
 # codec api
 
