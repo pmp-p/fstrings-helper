@@ -1,6 +1,8 @@
+import tokenize_rt
 import codecs
 import encodings
 import io
+
 
 utf_8 = encodings.search_function('utf8')
 
@@ -145,15 +147,10 @@ def _fstring_parse_outer(s, i, level, parts, exprs):
     return ret
 
 
-def _is_f(tokens, i):
-    return i >= 0 and tokens[i].name == 'STRING' and tokens[i].src[0] == 'f'
-
-
 def fstr(tok):
     return ( (tok.name == 'STRING' and tok.src[0]=='f') and 1 ) or 0
 
 def _make_fstring(tokens):
-    import tokenize_rt
 
     new_tokens = []
     exprs = []
@@ -167,8 +164,9 @@ def _make_fstring(tokens):
         token = token._replace(src=''.join(parts))
         new_tokens.append(token)
 
-    #exprs = ('({})'.format(expr) for expr in exprs)
-    exprs = ('{}'.format(expr) for expr in exprs)
+    # () required for cases like f'{1, 2}' => '{}'.format( (1, 2) )
+    exprs = ('({})'.format(expr) for expr in exprs)
+
     format_src = '.format({})'.format(', '.join(exprs))
     new_tokens.append(tokenize_rt.Token('FORMAT', src=format_src))
 
@@ -176,7 +174,7 @@ def _make_fstring(tokens):
 
 
 def decode(b, errors='strict'):
-    import tokenize_rt
+
 
     non_coding_tokens = frozenset((
         'COMMENT', tokenize_rt.ESCAPED_NL, 'NL', tokenize_rt.UNIMPORTANT_WS,
@@ -248,3 +246,5 @@ codec_map = {
 
 def register():  # pragma: no cover
     codecs.register(codec_map.get)
+
+
