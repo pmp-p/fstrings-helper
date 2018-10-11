@@ -4,9 +4,11 @@ import encodings
 import io
 
 
-utf_8 = encodings.search_function('utf8')
+utf_8 = encodings.search_function("utf8")
+
 
 class TokenSyntaxError(SyntaxError):
+
     def __init__(self, e, token):
         super(TokenSyntaxError, self).__init__(e)
         self.e = e
@@ -21,13 +23,13 @@ def _find_literal(s, start, level, parts, exprs):
     while i < len(s):
         ch = s[i]
 
-        if ch in ('{', '}'):
+        if ch in ("{", "}"):
             if level == 0:
                 if i + 1 < len(s) and s[i + 1] == ch:
                     i += 2
                     parse_expr = False
                     break
-                elif ch == '}':
+                elif ch == "}":
                     raise SyntaxError("f-string: single '}' is not allowed")
             break
 
@@ -57,10 +59,8 @@ def _find_expr(s, start, level, parts, exprs):
     while i < len(s):
         ch = s[i]
 
-        if ch == '\\':
-            raise SyntaxError(
-                'f-string expression part cannot include a backslash',
-            )
+        if ch == "\\":
+            raise SyntaxError("f-string expression part cannot include a backslash")
         if quote_char is not None:
             if ch == quote_char:
                 if triple_quoted:
@@ -78,14 +78,14 @@ def _find_expr(s, start, level, parts, exprs):
                 i += 2
             else:
                 triple_quoted = False
-        elif ch in ('[', '{', '('):
+        elif ch in ("[", "{", "("):
             nested_depth += 1
-        elif nested_depth and ch in (']', '}', ')'):
+        elif nested_depth and ch in ("]", "}", ")"):
             nested_depth -= 1
-        elif ch == '#':
+        elif ch == "#":
             raise SyntaxError("f-string expression cannot include '#'")
-        elif nested_depth == 0 and ch in ('!', ':', '}'):
-            if ch == '!' and i + 1 < len(s) and s[i + 1] == '=':
+        elif nested_depth == 0 and ch in ("!", ":", "}"):
+            if ch == "!" and i + 1 < len(s) and s[i + 1] == "=":
                 # Allow != at top level as `=` isn't a valid conversion
                 pass
             else:
@@ -93,14 +93,14 @@ def _find_expr(s, start, level, parts, exprs):
         i += 1
 
     if quote_char is not None:
-        raise SyntaxError('f-string: unterminated string')
+        raise SyntaxError("f-string: unterminated string")
     elif nested_depth:
         raise SyntaxError("f-string: mismatched '(', '{', or '['")
     _check_end()
 
-    exprs.append(s[start + 1:i])
+    exprs.append(s[start + 1 : i])
 
-    if s[i] == '!':
+    if s[i] == "!":
         parts.append(s[i])
         i += 1
         _check_end()
@@ -109,14 +109,14 @@ def _find_expr(s, start, level, parts, exprs):
 
     _check_end()
 
-    if s[i] == ':':
+    if s[i] == ":":
         parts.append(s[i])
         i += 1
         _check_end()
         i = _fstring_parse(s, i, level + 1, parts, exprs)
 
     _check_end()
-    if s[i] != '}':
+    if s[i] != "}":
         raise SyntaxError("f-string: expecting '}'")
 
     parts.append(s[i])
@@ -128,7 +128,7 @@ def _fstring_parse(s, i, level, parts, exprs):
     """Roughly Python/ast.c:fstring_find_literal_and_expr"""
     while True:
         i, parse_expr = _find_literal(s, i, level, parts, exprs)
-        if i == len(s) or s[i] == '}':
+        if i == len(s) or s[i] == "}":
             return i
         if parse_expr:
             i = _find_expr(s, i, level, parts, exprs)
@@ -137,10 +137,10 @@ def _fstring_parse(s, i, level, parts, exprs):
 def _fstring_parse_outer(s, i, level, parts, exprs):
     for q in ('"' * 3, "'" * 3, '"', "'"):
         if s.startswith(q):
-            s = s[len(q):len(s) - len(q)]
+            s = s[len(q) : len(s) - len(q)]
             break
     else:
-        raise AssertionError('unreachable')
+        raise AssertionError("unreachable")
     parts.append(q)
     ret = _fstring_parse(s, i, level, parts, exprs)
     parts.append(q)
@@ -148,65 +148,91 @@ def _fstring_parse_outer(s, i, level, parts, exprs):
 
 
 def fstr(tok):
-    return ( (tok.name == 'STRING' and tok.src[0]=='f') and 1 ) or 0
+    return ((tok.name == "STRING" and tok.src[0] == "f") and 1) or 0
 
 def _make_fstring(tokens):
-
     new_tokens = []
     exprs = []
 
     for i, token in enumerate(tokens):
-        parts = []
-        try:
-            _fstring_parse_outer(token.src[1:], 0, 0, parts, exprs)
-        except SyntaxError as e:
-            raise TokenSyntaxError(e, tokens[i - 1])
-        token = token._replace(src=''.join(parts))
+        if fstr(token):
+            parts = []
+            try:
+                _fstring_parse_outer(token.src[1:], 0, 0, parts, exprs)
+            except SyntaxError as e:
+                raise TokenSyntaxError(e, tokens[i])
+            token = token._replace(src="".join(parts))
+
         new_tokens.append(token)
 
     # () required for cases like f'{1, 2}' => '{}'.format( (1, 2) )
-    exprs = ('({})'.format(expr) for expr in exprs)
+    exprs = ("({})".format(expr) for expr in exprs)
 
-    format_src = '.format({})'.format(', '.join(exprs))
-    new_tokens.append(tokenize_rt.Token('FORMAT', src=format_src))
-
+    format_src = ".format({})".format(", ".join(exprs))
+    new_tokens.append(tokenize_rt.Token("FORMAT", src=format_src))
     return new_tokens
 
 
-def decode(b, errors='strict'):
+def peek_is_fstr(tokens, i):
+    if i < len(tokens):
+        return fstr(tokens[i])
 
 
-    non_coding_tokens = frozenset((
-        'COMMENT', tokenize_rt.ESCAPED_NL, 'NL', tokenize_rt.UNIMPORTANT_WS,
-    ))
+def decode(b, errors="strict"):
+
+    non_coding_tokens = frozenset(("COMMENT", tokenize_rt.ESCAPED_NL, "NL", tokenize_rt.UNIMPORTANT_WS))
 
     u, length = utf_8.decode(b, errors)
     tokens = tokenize_rt.src_to_tokens(u)
 
     to_replace = []
 
-    for i, token in enumerate(tokens):
-        if fstr(token):
-            to_replace.append((i, i+1))
+    started = -1
+    end = -1
+
+    for i in range(0, 1 + len(tokens)):
+        if i < len(tokens):
+            token = tokens[i]
+        else:
+            token = None
+
+        if token:
+            if fstr(token):
+                if started < 0:
+                    started = i
+                continue
+            end = i
+
+        if started >= 0:
+            if peek_is_fstr(tokens, i + 1):
+                continue
+            if token is None or not token.name in non_coding_tokens:
+                to_replace.append((started, end))
+                started = -1
 
     for start, end in reversed(to_replace):
+        if end-start > 1:
+            #move ending line away from format of multiline fstrings
+            if tokens[end-1].name in non_coding_tokens:
+                end -= 1
         try:
             tokens[start:end] = _make_fstring(tokens[start:end])
         except TokenSyntaxError as e:
             msg = str(e.e)
             line = u.splitlines()[e.token.line - 1]
-            bts = line.encode('UTF-8')[:e.token.utf8_byte_offset]
-            indent = len(bts.decode('UTF-8'))
-            raise SyntaxError(msg + '\n\n' + line + '\n' + ' ' * indent + '^')
+            bts = line.encode("UTF-8")[: e.token.utf8_byte_offset]
+            indent = len(bts.decode("UTF-8"))
+            raise SyntaxError(msg + "\n\n" + line + "\n" + " " * indent + "^")
     return tokenize_rt.tokens_to_src(tokens), length
 
 
 class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
+
     def _buffer_decode(self, input, errors, final):  # pragma: no cover
         if final:
             return decode(input, errors)
         else:
-            return '', 0
+            return "", 0
 
 
 class StreamReader(utf_8.streamreader, object):
@@ -218,7 +244,7 @@ class StreamReader(utf_8.streamreader, object):
     def stream(self):
         if not self._decoded:
             text, _ = decode(self._stream.read())
-            self._stream = io.BytesIO(text.encode('UTF-8'))
+            self._stream = io.BytesIO(text.encode("UTF-8"))
             self._decoded = True
         return self._stream
 
@@ -240,11 +266,9 @@ codec_map = {
         streamreader=StreamReader,
         streamwriter=utf_8.streamwriter,
     )
-    for name in ('future-fstrings', 'future_fstrings')
+    for name in ("future-fstrings", "future_fstrings")
 }
 
 
 def register():  # pragma: no cover
     codecs.register(codec_map.get)
-
-
