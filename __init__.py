@@ -177,6 +177,10 @@ def peek_is_fstr(tokens, i):
     if i < len(tokens):
         return fstr(tokens[i])
 
+def peek_is_str(tokens, i):
+    if i < len(tokens):
+        return (tokens[i].name == "STRING" )
+
 
 def decode(b, errors="strict"):
 
@@ -206,12 +210,21 @@ def decode(b, errors="strict"):
         if started >= 0:
             if peek_is_fstr(tokens, i + 1):
                 continue
-            if token is None or not token.name in non_coding_tokens:
-                to_replace.append((started, end))
-                started = -1
+            if peek_is_str(tokens, i + 1):
+                continue
+
+            if token is None:
+                pass
+            elif token.name in non_coding_tokens or peek_is_str(tokens,i):
+                #multiline f-string+str
+                continue
+
+            to_replace.append((started, end))
+            started = -1
 
     for start, end in reversed(to_replace):
         if end-start > 1:
+            print(end-start,tokens[end-1])
             #move ending line away from format of multiline fstrings
             if tokens[end-1].name in non_coding_tokens:
                 end -= 1
