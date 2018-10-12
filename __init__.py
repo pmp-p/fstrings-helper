@@ -224,7 +224,6 @@ def decode(b, errors="strict"):
 
     for start, end in reversed(to_replace):
         if end-start > 1:
-            print(end-start,tokens[end-1])
             #move ending line away from format of multiline fstrings
             if tokens[end-1].name in non_coding_tokens:
                 end -= 1
